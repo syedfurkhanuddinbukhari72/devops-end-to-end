@@ -1,27 +1,56 @@
-- name: Deploy to EC2
-  uses: appleboy/scp-action@v0.1.7
-  with:
-    host: ${{ secrets.EC2_HOST }}
-    username: ${{ secrets.EC2_USERNAME }}
-    key: ${{ secrets.SSH_PRIVATE_KEY }}
-    source: "app/docker-compose.yml"
-    target: "/tmp"
+name: Deploy Portfolio
 
-- name: Restart Application
-  uses: appleboy/ssh-action@v1.2.2
-  with:
-    host: ${{ secrets.EC2_HOST }}
-    username: ${{ secrets.EC2_USERNAME }}
-    key: ${{ secrets.SSH_PRIVATE_KEY }}
-    script: |
-      sudo mkdir -p /opt/portfolio
+on:
+  push:
+    branches:
+      - main
 
-      sudo mv /tmp/app/docker-compose.yml /opt/portfolio/docker-compose.yml
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
 
-      cd /opt/portfolio
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      docker compose pull
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      docker compose up -d --force-recreate
+      - name: Build Docker Image
+        run: |
+          docker build -t syedfurkhan1234/portfolio:latest ./app
 
-      docker image prune -f
+      - name: Push Docker Image
+        run: |
+          docker push syedfurkhan1234/portfolio:latest
+
+      - name: Copy docker-compose.yml to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "app/docker-compose.yml"
+          target: "/tmp"
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            sudo mkdir -p /opt/portfolio
+
+            sudo mv /tmp/app/docker-compose.yml /opt/portfolio/docker-compose.yml
+
+            cd /opt/portfolio
+
+            docker compose pull
+
+            docker compose up -d --force-recreate
+
+            docker image prune -f
