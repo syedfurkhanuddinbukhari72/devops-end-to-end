@@ -1,6 +1,6 @@
 services:
   portfolio:
-    image: syedfurkhan1234/portfolio:v1
+    image: syedfurkhan1234/portfolio:latest
     container_name: portfolio-container
     restart: unless-stopped
     ports:
