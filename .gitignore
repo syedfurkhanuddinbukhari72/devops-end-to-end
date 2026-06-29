@@ -1,0 +1,17 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# SSH Keys
+*.pem
+
+# Environment Files
+.env
+
+# OS Files
+.DS_Store
+
+# Logs
+*.log

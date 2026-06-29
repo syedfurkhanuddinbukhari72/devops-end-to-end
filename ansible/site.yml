@@ -1,0 +1,10 @@
+---
+- hosts: web
+  become: yes
+
+  roles:
+    - common
+    - docker
+    - nginx
+    - certbot
+    - deploy
