@@ -100,15 +100,15 @@ jobs:
 
       - name: Generate Ansible Inventory
         run: |
-          echo "[web]" > devops-end-to-end/ansible/inventory.ini
-          echo "${{ steps.deploy-host.outputs.host }}" >> devops-end-to-end/ansible/inventory.ini
-          echo "" >> devops-end-to-end/ansible/inventory.ini
-          echo "[web:vars]" >> devops-end-to-end/ansible/inventory.ini
-          echo "ansible_user=${{ secrets.EC2_USERNAME }}" >> devops-end-to-end/ansible/inventory.ini
-          echo "ansible_ssh_private_key_file=private_key.pem" >> devops-end-to-end/ansible/inventory.ini
+          echo "[web]" > ansible/inventory.ini
+          echo "${{ steps.deploy-host.outputs.host }}" >> ansible/inventory.ini
+          echo "" >> ansible/inventory.ini
+          echo "[web:vars]" >> ansible/inventory.ini
+          echo "ansible_user=${{ secrets.EC2_USERNAME }}" >> ansible/inventory.ini
+          echo "ansible_ssh_private_key_file=private_key.pem" >> ansible/inventory.ini
 
       - name: Run Ansible Playbook
-        working-directory: devops-end-to-end/ansible
+        working-directory: ansible
         run: |
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key.pem
           chmod 600 private_key.pem
