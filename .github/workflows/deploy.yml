@@ -47,12 +47,14 @@ jobs:
             echo "✅ Running EC2 Found: $INSTANCE_ID"
           fi
 
-      - name: Stop if EC2 Does Not Exist
+      - name: Setup Terraform
         if: steps.ec2-check.outputs.exists == 'false'
-        run: |
-          echo "❌ No running EC2 instance found."
-          echo "Stopping deployment."
-          exit 1
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        if: steps.ec2-check.outputs.exists == 'false'
+        working-directory: terraform
+        run: terraform init
 
       - name: Login to Docker Hub
         if: steps.ec2-check.outputs.exists == 'true'
