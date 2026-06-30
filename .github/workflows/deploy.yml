@@ -13,10 +13,9 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ===============================
-      # LEVEL 2 - STEP 1
+      
+      
       # Configure AWS CLI
-      # ===============================
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -24,10 +23,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      # ===============================
-      # LEVEL 2 - STEP 1
+
+      
       # Check EC2 Availability
-      # ===============================
       - name: Check EC2 Availability
         id: ec2-check
         run: |
@@ -41,11 +39,11 @@ jobs:
 
           if [ -z "$INSTANCE_ID" ]; then
             echo "exists=false" >> $GITHUB_OUTPUT
-            echo "❌ No running EC2 found."
+            echo " No running EC2 found."
           else
             echo "exists=true" >> $GITHUB_OUTPUT
             echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
-            echo "✅ Running EC2 Found: $INSTANCE_ID"
+            echo " Running EC2 Found: $INSTANCE_ID"
           fi
 
       - name: Setup Terraform
@@ -161,13 +159,13 @@ jobs:
           echo "Performing health check on http://${{ steps.deploy-host.outputs.host }}:8080..."
           for i in {1..10}; do
             if curl -sf http://${{ steps.deploy-host.outputs.host }}:8080 > /dev/null; then
-              echo "✅ Health check passed!"
+              echo " Health check passed!"
               exit 0
             fi
             echo "Waiting for app to start, retrying in 5 seconds..."
             sleep 5
           done
-          echo "❌ Health check failed!"
+          echo " Health check failed!"
           exit 1
 
       - name: Rollback Deployment
@@ -179,7 +177,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /opt/portfolio
-            echo "⚠️ Health check failed! Rolling back/stopping container..."
+            echo " Health check failed! Rolling back/stopping container..."
             docker compose down
 
       - name: Deployment Summary
@@ -188,20 +186,20 @@ jobs:
           INSTANCE_ID="${{ steps.ec2-check.outputs.exists == 'true' && steps.ec2-check.outputs.instance_id || steps.terraform-output.outputs.instance_id }}"
           HOST_IP="${{ steps.deploy-host.outputs.host }}"
           
-          echo "========================================="
-          echo "🚀 DEPLOYMENT SUMMARY"
-          echo "========================================="
+          echo ""
+          echo " DEPLOYMENT SUMMARY"
+          echo ""
           echo "EC2 Instance ID : $INSTANCE_ID"
           echo "Public IP       : $HOST_IP"
           echo "Docker Status   : Running"
           echo "Deployment      : SUCCESS"
-          echo "========================================="
+          echo ""
           
           # Write to GITHUB_STEP_SUMMARY for a nice UI presentation
-          echo "### 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "###  Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
           echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
           echo "| **EC2 Instance ID** | \`$INSTANCE_ID\` |" >> $GITHUB_STEP_SUMMARY
           echo "| **Public IP** | \`$HOST_IP\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Docker Status** | ✅ Running |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Deployment Status** | 🎉 SUCCESS |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Docker Status** |  Running |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Deployment Status** |  SUCCESS |" >> $GITHUB_STEP_SUMMARY
