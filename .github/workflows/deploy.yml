@@ -44,6 +44,7 @@ jobs:
             echo "❌ No running EC2 found."
           else
             echo "exists=true" >> $GITHUB_OUTPUT
+            echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
             echo "✅ Running EC2 Found: $INSTANCE_ID"
           fi
 
@@ -56,38 +57,90 @@ jobs:
         working-directory: terraform
         run: terraform init
 
+      - name: Terraform Validate
+        if: steps.ec2-check.outputs.exists == 'false'
+        working-directory: terraform
+        run: terraform validate
+
+      - name: Terraform Plan
+        if: steps.ec2-check.outputs.exists == 'false'
+        working-directory: terraform
+        run: terraform plan
+
+      - name: Terraform Apply
+        if: steps.ec2-check.outputs.exists == 'false'
+        working-directory: terraform
+        run: terraform apply -auto-approve
+
+      - name: Get Terraform Outputs
+        if: steps.ec2-check.outputs.exists == 'false'
+        id: terraform-output
+        working-directory: terraform
+        run: |
+          echo "public_ip=$(terraform output -raw public_ip)" >> $GITHUB_OUTPUT
+          echo "instance_id=$(terraform output -raw instance_id)" >> $GITHUB_OUTPUT
+
+      - name: Determine Deployment Host
+        id: deploy-host
+        run: |
+          if [ "${{ steps.ec2-check.outputs.exists }}" = "true" ]; then
+            echo "host=${{ secrets.EC2_HOST }}" >> $GITHUB_OUTPUT
+          else
+            echo "host=${{ steps.terraform-output.outputs.public_ip }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Wait for SSH to be ready
+        run: |
+          echo "Waiting for SSH to be ready on ${{ steps.deploy-host.outputs.host }}..."
+          for i in {1..30}; do
+            nc -z -w 5 ${{ steps.deploy-host.outputs.host }} 22 && echo "SSH is ready!" && break
+            echo "SSH not ready yet, retrying in 5 seconds..."
+            sleep 5
+          done
+
+      - name: Generate Ansible Inventory
+        run: |
+          echo "[web]" > devops-end-to-end/ansible/inventory.ini
+          echo "${{ steps.deploy-host.outputs.host }}" >> devops-end-to-end/ansible/inventory.ini
+          echo "" >> devops-end-to-end/ansible/inventory.ini
+          echo "[web:vars]" >> devops-end-to-end/ansible/inventory.ini
+          echo "ansible_user=${{ secrets.EC2_USERNAME }}" >> devops-end-to-end/ansible/inventory.ini
+          echo "ansible_ssh_private_key_file=private_key.pem" >> devops-end-to-end/ansible/inventory.ini
+
+      - name: Run Ansible Playbook
+        working-directory: devops-end-to-end/ansible
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key.pem
+          chmod 600 private_key.pem
+          ansible-playbook -i inventory.ini site.yml
+
       - name: Login to Docker Hub
-        if: steps.ec2-check.outputs.exists == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build Docker Image
-        if: steps.ec2-check.outputs.exists == 'true'
         run: |
           docker build -t syedfurkhan1234/portfolio:latest ./app
 
       - name: Push Docker Image
-        if: steps.ec2-check.outputs.exists == 'true'
         run: |
           docker push syedfurkhan1234/portfolio:latest
 
       - name: Copy docker-compose.yml to EC2
-        if: steps.ec2-check.outputs.exists == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ steps.deploy-host.outputs.host }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "app/docker-compose.yml"
           target: "/tmp"
 
       - name: Deploy to EC2
-        if: steps.ec2-check.outputs.exists == 'true'
         uses: appleboy/ssh-action@v1.2.2
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ steps.deploy-host.outputs.host }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
@@ -102,3 +155,53 @@ jobs:
             docker compose up -d --force-recreate
 
             docker image prune -f
+
+      - name: Health Check
+        run: |
+          echo "Performing health check on http://${{ steps.deploy-host.outputs.host }}:8080..."
+          for i in {1..10}; do
+            if curl -sf http://${{ steps.deploy-host.outputs.host }}:8080 > /dev/null; then
+              echo "✅ Health check passed!"
+              exit 0
+            fi
+            echo "Waiting for app to start, retrying in 5 seconds..."
+            sleep 5
+          done
+          echo "❌ Health check failed!"
+          exit 1
+
+      - name: Rollback Deployment
+        if: failure()
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ steps.deploy-host.outputs.host }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/portfolio
+            echo "⚠️ Health check failed! Rolling back/stopping container..."
+            docker compose down
+
+      - name: Deployment Summary
+        if: success()
+        run: |
+          INSTANCE_ID="${{ steps.ec2-check.outputs.exists == 'true' && steps.ec2-check.outputs.instance_id || steps.terraform-output.outputs.instance_id }}"
+          HOST_IP="${{ steps.deploy-host.outputs.host }}"
+          
+          echo "========================================="
+          echo "🚀 DEPLOYMENT SUMMARY"
+          echo "========================================="
+          echo "EC2 Instance ID : $INSTANCE_ID"
+          echo "Public IP       : $HOST_IP"
+          echo "Docker Status   : Running"
+          echo "Deployment      : SUCCESS"
+          echo "========================================="
+          
+          # Write to GITHUB_STEP_SUMMARY for a nice UI presentation
+          echo "### 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
+          echo "| **EC2 Instance ID** | \`$INSTANCE_ID\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Public IP** | \`$HOST_IP\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Docker Status** | ✅ Running |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Deployment Status** | 🎉 SUCCESS |" >> $GITHUB_STEP_SUMMARY
