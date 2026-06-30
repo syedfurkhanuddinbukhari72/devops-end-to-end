@@ -5,7 +5,12 @@
     state: present
     update_cache: yes
 
-- name: Configure Nginx reverse proxy
+- name: Check if SSL certificate exists
+  stat:
+    path: /etc/letsencrypt/live/universally.in/fullchain.pem
+  register: cert_file
+
+- name: Configure Nginx reverse proxy (HTTP only)
   copy:
     dest: /etc/nginx/sites-available/default
     content: |
@@ -13,7 +18,7 @@
           listen 80;
           listen [::]:80;
 
-          server_name _;
+          server_name universally.in;
 
           location / {
               proxy_pass http://127.0.0.1:8080;
@@ -26,6 +31,41 @@
               proxy_set_header X-Forwarded-Proto $scheme;
           }
       }
+  when: not cert_file.stat.exists
+
+- name: Configure Nginx reverse proxy (HTTPS enabled)
+  copy:
+    dest: /etc/nginx/sites-available/default
+    content: |
+      server {
+          listen 80;
+          listen [::]:80;
+          server_name universally.in;
+          return 301 https://$host$request_uri;
+      }
+
+      server {
+          listen 443 ssl;
+          listen [::]:443 ssl;
+          server_name universally.in;
+
+          ssl_certificate /etc/letsencrypt/live/universally.in/fullchain.pem;
+          ssl_certificate_key /etc/letsencrypt/live/universally.in/privkey.pem;
+          include /etc/letsencrypt/options-ssl-nginx.conf;
+          ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+          location / {
+              proxy_pass http://127.0.0.1:8080;
+
+              proxy_http_version 1.1;
+
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+          }
+      }
+  when: cert_file.stat.exists
 
 - name: Test nginx configuration
   command: nginx -t

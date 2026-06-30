@@ -1,0 +1,20 @@
+---
+- name: Install Certbot and Nginx plugin
+  apt:
+    name:
+      - certbot
+      - python3-certbot-nginx
+    state: present
+    update_cache: yes
+
+- name: Check if SSL certificate already exists
+  stat:
+    path: /etc/letsencrypt/live/universally.in/fullchain.pem
+  register: cert_file
+
+- name: Obtain SSL certificate using Certbot
+  command: certbot --nginx -d universally.in --non-interactive --agree-tos --email syedfurkhan1234@gmail.com
+  when: not cert_file.stat.exists
+  register: certbot_result
+  failed_when: false
+  changed_when: certbot_result.rc == 0
