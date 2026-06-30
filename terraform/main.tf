@@ -76,7 +76,7 @@ resource "aws_instance" "server" {
 
   instance_type = var.instance_type
 
-  key_name = "ansible-lab-key"
+  key_name = var.key_name
 
   vpc_security_group_ids = [
 

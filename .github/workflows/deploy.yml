@@ -13,21 +13,66 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # ===============================
+      # LEVEL 2 - STEP 1
+      # Configure AWS CLI
+      # ===============================
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      # ===============================
+      # LEVEL 2 - STEP 1
+      # Check EC2 Availability
+      # ===============================
+      - name: Check EC2 Availability
+        id: ec2-check
+        run: |
+          echo "Checking for running EC2..."
+
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=devops-server" \
+                      "Name=instance-state-name,Values=running" \
+            --query "Reservations[].Instances[].InstanceId" \
+            --output text)
+
+          if [ -z "$INSTANCE_ID" ]; then
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "❌ No running EC2 found."
+          else
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "✅ Running EC2 Found: $INSTANCE_ID"
+          fi
+
+      - name: Stop if EC2 Does Not Exist
+        if: steps.ec2-check.outputs.exists == 'false'
+        run: |
+          echo "❌ No running EC2 instance found."
+          echo "Stopping deployment."
+          exit 1
+
       - name: Login to Docker Hub
+        if: steps.ec2-check.outputs.exists == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build Docker Image
+        if: steps.ec2-check.outputs.exists == 'true'
         run: |
           docker build -t syedfurkhan1234/portfolio:latest ./app
 
       - name: Push Docker Image
+        if: steps.ec2-check.outputs.exists == 'true'
         run: |
           docker push syedfurkhan1234/portfolio:latest
 
       - name: Copy docker-compose.yml to EC2
+        if: steps.ec2-check.outputs.exists == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -37,6 +82,7 @@ jobs:
           target: "/tmp"
 
       - name: Deploy to EC2
+        if: steps.ec2-check.outputs.exists == 'true'
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.EC2_HOST }}
